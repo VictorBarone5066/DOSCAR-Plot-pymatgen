@@ -28,7 +28,8 @@ class TempName:
                  'p': '--',
                  'd': ':'
                 }
-    legend = []
+    atomLegend = []
+    styleLegend = []
     
     def __init__(self, vasprun):
         #Initialize list of unique elements and their pdos if formatting is correct
@@ -67,12 +68,13 @@ class TempName:
             elements = [elements]
         
         for element in elements:
-            self.legend.append(Line2D([0], [0], color=color, lw=2, label=element.name))
+            self.atomLegend.append(Line2D([0], [0], color=color, lw=2, label=element.name))
             
             #I forsee needing to get rid of explicit DOS variables b/c of the number of potential cases
             s = (self.completeDos.get_element_spd_dos(element)[OrbitalType.s])
             p = (self.completeDos.get_element_spd_dos(element)[OrbitalType.p])
             d = (self.completeDos.get_element_spd_dos(element)[OrbitalType.d])        
+            
             
             x = [e - s.efermi for e in s.energies] if scaleByEf else s.efermi
             if(not hideS):
@@ -103,15 +105,41 @@ class TempName:
     
     def GenerateLegend(self, atoms = True, lineStyles = True):
         if(atoms):
-            first = plt.legend(handles = self.legend, loc = "upper right")
+            first = plt.legend(handles = self.atomLegend, loc = "center", frameon=False, bbox_to_anchor=(1.068, 0.5))
             plt.gca().add_artist(first)    
         
-        if(lineStyles):
-            legend2 = []
-            legend2.append(Line2D([0], [0], color='k', lw=2, linestyle = self.lineStyle['s'], label='s'))
-            legend2.append(Line2D([0], [0], color='k', lw=2, linestyle = self.lineStyle['p'], label='p'))
-            legend2.append(Line2D([0], [0], color='k', lw=2, linestyle = self.lineStyle['d'], label='d'))
-            plt.legend(handles = legend2, loc = "lower right")
+        if(lineStyles):            
+            self.styleLegend.append(Line2D([0], [0], color='k', lw=2, linestyle = self.lineStyle['s'], label='s'))
+            self.styleLegend.append(Line2D([0], [0], color='k', lw=2, linestyle = self.lineStyle['p'], label='p'))
+            self.styleLegend.append(Line2D([0], [0], color='k', lw=2, linestyle = self.lineStyle['d'], label='d'))
+            plt.legend(handles = self.styleLegend, loc = "center", frameon=False, bbox_to_anchor=(1.065, .1))
         
         return
+    
+    def AutoCreateGraph(self, vasprun, xLims = [None, None], yLims = [None, None], saveLoc = "spdGraph.pdf"):
+        if(self.IsLDecomposed(vasprun)):  
+            #Add elements to the plot.  In this case, add all of them.
+            for elem in self.uniqueElements:
+                self.GetElementDosPlot(elem)
+            
+          
+            #Plot Customization   
+            plt.xlabel(r"$E-E_\mathrm{F}$ (eV)")
+            plt.ylabel("DOS (states / eV)")
+            self.GenerateLegend()
+            if(xLims[0] != None and xLims[1] != None):
+                plt.xlim(xLims[0], xLims[1])
+            if(yLims[0] != None and yLims[1] != None):
+                plt.ylim(yLims[0], yLims[1])                
+            elif(not self.spinPol):
+                plt.ylim(0)
+            
+            #Be cure to save (if necessary) and clear the plot when done
+            plt.savefig(saveLoc)
+            plt.clf() 
+            return
+        
+        else:
+            print("AutoCreateGraph:  Your .xml file does not contain s-p-d components\n")
+            return
 
