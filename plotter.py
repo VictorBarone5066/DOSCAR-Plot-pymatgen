@@ -276,7 +276,7 @@ class LDosPlotter:
             plt.title("My Title")
             plt.xlabel(r"$E-E_\mathrm{F}$ (eV)")
             plt.ylabel("DOS (states / eV)")
-            test.GenerateLegend()
+            ex.GenerateLegend()
             if(not ex.spin_pol):
                 plt.ylim(0)
             
@@ -290,33 +290,23 @@ class LDosPlotter:
     from matplotlib import pyplot as mplt_  
     from matplotlib.lines import Line2D  
 
+    vasprun = None
     complete_dos = None
-    unique_elements = []    
+    unique_elements = None    
     spin_pol = None
     
     # Colors to be used for plotting.  If there is 1 unique element, 
     # colors[0] is used.  Otherwise, colors[1] thru colors[7] are used.
     # If you somehow have more than 8 elements, the cycle will repeat
     # for the 9th.
-    colors = [(0, 0, 0), # black
-              (255, 0, 0), # red
-              (0, 173, 0), # green
-              (0, 0, 255), # blue
-              (255, 0, 183), # pink
-              (15, 243, 255), # cyan
-              (235, 109, 0), # orange
-              (153, 0, 235) # purple
-              ]
-    color_index = 0
+    colors = None
+    color_index = None
     
     # Line styles to use for s, p, d components
-    line_style = {'s': '-',
-                  'p': '--',
-                  'd': ':'
-                 }
-    # Lists holding legend data
-    atom_legend = []
-    style_legend = []
+    line_style = None
+    # Lists holding legend handles
+    atom_legend_handles = None
+    style_legend_handles = None
     
     def __init__(self, vasprun):
         """
@@ -324,9 +314,35 @@ class LDosPlotter:
             vasprun: A pymatgen.io.vasp Vasprun object
         """
         
+        self.colors = [(0, 0, 0), # black
+                  (255, 0, 0), # red
+                  (0, 173, 0), # green
+                  (0, 0, 255), # blue
+                  (255, 0, 183), # pink
+                  (15, 243, 255), # cyan
+                  (235, 109, 0), # orange
+                  (153, 0, 235) # purple
+                  ]
+        self.color_index = 0
+        
+        self.line_style = {'s': '-',
+                           'p': '--',
+                           'd': ':'
+                           }
+        
+        self.vasprun = vasprun
+        self.complete_dos = vasprun.complete_dos
+        # Determine if spin pol was used
+        self.spin_pol = self.IsSpinPolarized()
+        
+        self.unique_elements = []
+        self.atom_legend_handles = {}
+        self.style_legend_handles = {}
+        self.GetSPDLegendHandles()
+
         # Initialize list of unique elements and their pdos if formatting
         # is correct
-        if(self.IsLDecomposed(vasprun)):
+        if(self.IsLDecomposed()):
             for i in range(0, len(vasprun.complete_dos.structure.sites)):
                 counted = False
                 for j in range(0, len(self.unique_elements)):
@@ -339,25 +355,21 @@ class LDosPlotter:
                                                         structure.sites[i].\
                                                         species_string))
             
-            self.complete_dos = vasprun.complete_dos
         else:
             print("BadVasprunWarning:  The DOS info in your .xml file is not \
                   formatted into s-p-d components.")
-    
-        # Determine if spin pol was used
-        self.spin_pol = self.IsSpinPolarized(vasprun)
 
     def GetColor(self, i):
         return (a / 255 for a in self.colors[i])
     
-    def IsLDecomposed(self, vasprun):
-        if(vasprun.pdos == []):
+    def IsLDecomposed(self):
+        if(self.vasprun.pdos == []):
             return False
         return True
     
-    def IsSpinPolarized(self, vasprun):
-        return vasprun.is_spin
-    
+    def IsSpinPolarized(self):
+        return self.vasprun.is_spin
+       
     def GetElementDosPlot(self, elements, sigma=0, scale_by_ef=True, 
                           hide_s=False, hide_p=False, hide_d=False):
         """
@@ -388,9 +400,11 @@ class LDosPlotter:
             elements = [elements]
         
         for element in elements:
-            # Add this element's entry to legend
-            self.atom_legend.append(self.Line2D([0], [0], color=color, 
-                                           lw=2, label=element.name))
+            # Add this element's entry to legend if not there already
+            if element.name not in self.atom_legend_handles:
+                self.atom_legend_handles[element.name] = self.Line2D([0], [0],
+                                                         color=color, lw=2, 
+                                                         label=element.name)
             
             # Explicit Dos variables so that function calls are not too 
             # long
@@ -399,7 +413,7 @@ class LDosPlotter:
             d = (self.complete_dos.get_element_spd_dos(element)[OrbitalType.d])        
             
             
-            x = [e - s.efermi for e in s.energies] if scale_by_ef else s.efermi
+            x=[e - s.efermi for e in s.energies] if scale_by_ef else s.energies
             # Adding dos sets to the plot
             if(not hide_s):
                 style = self.line_style['s']
@@ -438,8 +452,50 @@ class LDosPlotter:
                    self.mplt_.plot(x, y, color=color, linestyle=str(style), 
                             linewidth=.8)
         return
+
+    def AddAllElements(self, sigma=0, scale_by_ef=True, hide_s=False, 
+                       hide_p=False, hide_d=False):
+        # Add all elements to plot
+        for elem in self.unique_elements:
+            self.GetElementDosPlot(elem, sigma, scale_by_ef, hide_s, hide_p, 
+                                   hide_d)     
+       
+    def GetSPDLegendHandles(self):
+        self.style_legend_handles['s'] = self.Line2D([0], [0], 
+                                 color='k', lw=2, 
+                                 linestyle=\
+                                 self.line_style['s'], 
+                                 label='s')
+        self.style_legend_handles['p'] = self.Line2D([0], [0], 
+                                     color='k', lw=2, 
+                                     linestyle=\
+                                     self.line_style['p'], 
+                                     label='p')
+        self.style_legend_handles['d'] = self.Line2D([0], [0], 
+                                     color='k', lw=2, 
+                                     linestyle=\
+                                     self.line_style['d'], 
+                                     label='d')
     
-    def GenerateLegend(self, atoms=True, line_styles=True):
+    def ChangeLineStyle(self, keys, change_to):
+        if(self.color_index > 1):
+            print("WARNING:  It looks like you've tried to change linestyle(s)\
+                  after DOS curves have already been plotted.  Try calling \
+                  this function before plotting the atoms.")
+        if(not isinstance(keys, list)):
+            keys = [keys]
+        if(not isinstance(change_to, list)):
+            change_to = [change_to]    
+        if(len(keys) != len(change_to)):
+            return
+        
+        for k , c in zip(keys, change_to):
+            self.line_style[str(k)] = str(c)
+            self.GetSPDLegendHandles()
+    
+    def GenerateLegend(self, atoms=True, line_styles=True, frame=True, 
+                       atom_legend_loc = "upper right", 
+                       line_style_loc = "lower right"):
         """
         Generates and places a legend on the current figure
         
@@ -451,27 +507,20 @@ class LDosPlotter:
         """
         
         if(atoms):
-            first = self.mplt_.legend(handles = self.atom_legend, 
-                                      loc = "center", frameon=False, 
-                                      bbox_to_anchor=(1.068, 0.5))
+            first = self.mplt_.legend(handles= 
+                                      [v for v in \
+                                      self.atom_legend_handles.values()], 
+                                      loc = atom_legend_loc, frameon=frame)
             self.mplt_.gca().add_artist(first)    
         
-        if(line_styles):            
-            self.style_legend.append(self.Line2D([0], [0], color='k', lw=2, 
-                                            linestyle=self.line_style['s'], 
-                                            label='s'))
-            self.style_legend.append(self.Line2D([0], [0], color='k', lw=2, 
-                                            linestyle=self.line_style['p'], 
-                                            label='p'))
-            self.style_legend.append(self.Line2D([0], [0], color='k', lw=2, 
-                                            linestyle=self.line_style['d'], 
-                                            label='d'))
-            self.mplt_.legend(handles=self.style_legend, loc="center", 
-                              frameon=False, bbox_to_anchor=(1.065, .1))
-        
+        if(line_styles):  
+
+            self.mplt_.legend(handles=[h for h in \
+                              self.style_legend_handles.values()], 
+                              loc=line_style_loc, frameon=frame)    
         return
     
-    def AutoCreateGraph(self, vasprun, x_lims=[None, None], 
+    def AutoCreateGraph(self, x_lims=[None, None], 
                         y_lims=[None, None], save_path="spdGraph.pdf"):
         """
         Automatically creates and saves a default graph for those who 
@@ -490,7 +539,7 @@ class LDosPlotter:
                        save the figure to.  default = ./spdGraph.pdf
         """
         
-        if(self.IsLDecomposed(vasprun)):  
+        if(self.IsLDecomposed()):  
             # Add elements to the plot.  In this case, add all of them.
             for elem in self.unique_elements:
                 self.GetElementDosPlot(elem)
