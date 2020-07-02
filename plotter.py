@@ -291,7 +291,6 @@ class LDosPlotter:
     from matplotlib.lines import Line2D  
 
     vasprun = None
-    complete_dos = None
     unique_elements = None    
     spin_pol = None
     
@@ -307,8 +306,15 @@ class LDosPlotter:
     # Lists holding legend handles
     atom_legend_handles = None
     style_legend_handles = None
+    both_legend_handles = None
     
-    def __init__(self, vasprun):
+    # Determines if function calls will return current figure
+    return_fig = None
+    current_fig = None
+    
+    used_s, used_p, used_d = None, None, None
+    
+    def __init__(self, vasprun, return_figure = False):
         """
         Args:
             vasprun: A pymatgen.io.vasp Vasprun object
@@ -331,14 +337,20 @@ class LDosPlotter:
                            }
         
         self.vasprun = vasprun
-        self.complete_dos = vasprun.complete_dos
         # Determine if spin pol was used
         self.spin_pol = self.IsSpinPolarized()
         
         self.unique_elements = []
         self.atom_legend_handles = {}
         self.style_legend_handles = {}
+        self.both_legend_handles = {}
         self.GetSPDLegendHandles()
+        
+        self.return_fig = return_figure
+
+        self.used_s = False
+        self.used_p = False
+        self.used_d = False
 
         # Initialize list of unique elements and their pdos if formatting
         # is correct
@@ -408,15 +420,20 @@ class LDosPlotter:
             
             # Explicit Dos variables so that function calls are not too 
             # long
-            s = (self.complete_dos.get_element_spd_dos(element)[OrbitalType.s])
-            p = (self.complete_dos.get_element_spd_dos(element)[OrbitalType.p])
-            d = (self.complete_dos.get_element_spd_dos(element)[OrbitalType.d])        
+            s = (self.vasprun.complete_dos.get_element_spd_dos(element)\
+                 [OrbitalType.s])
+            p = (self.vasprun.complete_dos.get_element_spd_dos(element)\
+                 [OrbitalType.p])
+            d = (self.vasprun.complete_dos.get_element_spd_dos(element)\
+                 [OrbitalType.d])        
             
             
             x=[e - s.efermi for e in s.energies] if scale_by_ef else s.energies
             # Adding dos sets to the plot
             if(not hide_s):
+                self.used_s = True
                 style = self.line_style['s']
+                self.AddElementToHandles(element, 's', color)
                 y = s.densities[Spin.up] if sigma <= 0 else \
                 s.get_smeared_densities(sigma)[Spin.up]
                 self.mplt_.plot(x, y, color=color, linestyle=str(style), 
@@ -428,7 +445,9 @@ class LDosPlotter:
                    self.mplt_.plot(x, y, color=color, linestyle=str(style), 
                             linewidth=.8)                 
             if(not hide_p):
+                self.used_p = True
                 style = self.line_style['p']
+                self.AddElementToHandles(element, 'p', color)                
                 y = p.densities[Spin.up] if sigma <= 0 else \
                 p.get_smeared_densities(sigma)[Spin.up]                
                 self.mplt_.plot(x, y, color=color, linestyle=str(style), 
@@ -440,7 +459,9 @@ class LDosPlotter:
                    self.mplt_.plot(x, y, color=color, linestyle=str(style), 
                             linewidth=.8)
             if(not hide_d):
+                self.used_d = True
                 style = self.line_style['d']
+                self.AddElementToHandles(element, 'd', color)
                 y = d.densities[Spin.up] if sigma <= 0 else \
                 d.get_smeared_densities(sigma)[Spin.up]                
                 self.mplt_.plot(x, y, color=color, linestyle=str(style), 
@@ -451,31 +472,56 @@ class LDosPlotter:
                    [-y for y in d.get_smeared_densities(sigma)[Spin.down]]
                    self.mplt_.plot(x, y, color=color, linestyle=str(style), 
                             linewidth=.8)
+        
+        self.GetSPDLegendHandles()
+        self.current_fig = self.mplt_.gcf()
+        if(self.return_fig):
+            return self.mplt_.gcf()
         return
 
     def AddAllElements(self, sigma=0, scale_by_ef=True, hide_s=False, 
                        hide_p=False, hide_d=False):
-        # Add all elements to plot
+        
+        # Returning a plot object
+        if(self.return_fig):
+            for elem in self.unique_elements:
+                self.GetElementDosPlot(elem, sigma, scale_by_ef, hide_s, 
+                                       hide_p, hide_d)                
+            self.current_fig = self.mplt_.gcf()
+            return self.mplt_.gcf()
+        
+        # Plotting to whatever object is currently in use
         for elem in self.unique_elements:
             self.GetElementDosPlot(elem, sigma, scale_by_ef, hide_s, hide_p, 
                                    hide_d)     
-       
+        self.current_fig = self.mplt_.gcf()
+        return
+    
+    def AddElementToHandles(self, elem, orbital, color):
+        self.both_legend_handles[elem.name + orbital] = self.Line2D([0], [0], 
+                                color=color, lw=2, linestyle=\
+                                self.line_style[orbital], label=\
+                                elem.name + ' (' + orbital + ')')
+    
     def GetSPDLegendHandles(self):
-        self.style_legend_handles['s'] = self.Line2D([0], [0], 
-                                 color='k', lw=2, 
-                                 linestyle=\
-                                 self.line_style['s'], 
-                                 label='s')
-        self.style_legend_handles['p'] = self.Line2D([0], [0], 
-                                     color='k', lw=2, 
-                                     linestyle=\
-                                     self.line_style['p'], 
-                                     label='p')
-        self.style_legend_handles['d'] = self.Line2D([0], [0], 
-                                     color='k', lw=2, 
-                                     linestyle=\
-                                     self.line_style['d'], 
-                                     label='d')
+        if(self.used_s):
+            self.style_legend_handles['s'] = self.Line2D([0], [0], color='k', 
+                                             lw=2, 
+                                             linestyle=\
+                                             self.line_style['s'], 
+                                             label='s')
+        if(self.used_p):
+            self.style_legend_handles['p'] = self.Line2D([0], [0], 
+                                             color='k', lw=2, 
+                                             linestyle=\
+                                             self.line_style['p'], 
+                                             label='p')
+        if(self.used_d):    
+            self.style_legend_handles['d'] = self.Line2D([0], [0], 
+                                             color='k', lw=2, 
+                                             linestyle=\
+                                             self.line_style['d'], 
+                                             label='d')
     
     def ChangeLineStyle(self, keys, change_to):
         if(self.color_index > 1):
@@ -489,11 +535,12 @@ class LDosPlotter:
         if(len(keys) != len(change_to)):
             return
         
-        for k , c in zip(keys, change_to):
+        for k ,c in zip(keys, change_to):
             self.line_style[str(k)] = str(c)
-            self.GetSPDLegendHandles()
+        self.GetSPDLegendHandles()
     
-    def GenerateLegend(self, atoms=True, line_styles=True, frame=True, 
+    def GenerateLegend(self, style=1, font_size=8, atoms=True, 
+                       line_styles=True, frame=True, 
                        atom_legend_loc = "upper right", 
                        line_style_loc = "lower right"):
         """
@@ -505,23 +552,42 @@ class LDosPlotter:
             line_styles: determine whether to add a line style legend.  
                          default = true
         """
+            
+        if(style == 1):
+            self.mplt_.legend(handles=[b for b in \
+                                       self.both_legend_handles.values()],
+                              loc=atom_legend_loc, frameon=frame, 
+                              fontsize=font_size)
+                                      
+        elif(style == 2):
+            if(atoms):
+                first = self.mplt_.legend(handles= 
+                                          [v for v in \
+                                          self.atom_legend_handles.values()], 
+                                          loc = atom_legend_loc, frameon=frame,
+                                          fontsize=font_size)
+                self.mplt_.gca().add_artist(first)    
+            
+            if(line_styles):  
+                self.mplt_.legend(handles=[h for h in \
+                                  self.style_legend_handles.values()], 
+                                  loc=line_style_loc, frameon=frame, 
+                                  fontsize=font_size)    
         
-        if(atoms):
-            first = self.mplt_.legend(handles= 
-                                      [v for v in \
-                                      self.atom_legend_handles.values()], 
-                                      loc = atom_legend_loc, frameon=frame)
-            self.mplt_.gca().add_artist(first)    
-        
-        if(line_styles):  
+        else:
+            print("Unsupported legend style - choose style=1 or style=2.")
 
-            self.mplt_.legend(handles=[h for h in \
-                              self.style_legend_handles.values()], 
-                              loc=line_style_loc, frameon=frame)    
+        self.current_fig = self.mplt_.gcf()        
+        if(self.return_fig):
+            return self.mplt_.gcf()
         return
     
-    def AutoCreateGraph(self, x_lims=[None, None], 
-                        y_lims=[None, None], save_path="spdGraph.pdf"):
+    def GetFigure(self):
+        self.current_fig = self.mplt_.gcf()
+        return self.current_fig
+    
+    def AutoCreateGraph(self, save_path="spdGraph.pdf", x_lims=[None, None], 
+                        y_lims=[None, None], legend_style=1):
         """
         Automatically creates and saves a default graph for those who 
         don't want to mess with plotting elements.
@@ -544,11 +610,15 @@ class LDosPlotter:
             for elem in self.unique_elements:
                 self.GetElementDosPlot(elem)
             
-          
+            if(legend_style == 1):
+                font = 8
+            if(legend_style == 2):
+                font = 12
+            
             # Plot Customization   
             self.mplt_.xlabel(r"$E-E_\mathrm{F}$ (eV)")
             self.mplt_.ylabel("DOS (states / eV)")
-            self.GenerateLegend()
+            self.GenerateLegend(style=legend_style, font_size=font)
             if(x_lims[0] != None and x_lims[1] != None):
                 self.mplt_.xlim(x_lims[0], x_lims[1])
             if(y_lims[0] != None and y_lims[1] != None):
@@ -557,7 +627,10 @@ class LDosPlotter:
                 self.mplt_.ylim(0)
             
             # Be cure to save (if necessary) and clear the plot when done
+            self.current_fig = self.mplt_.gcf()
             self.mplt_.savefig(save_path)
+            if(self.return_fig):
+                return self.current_fig
             self.mplt_.clf() 
             return
         
