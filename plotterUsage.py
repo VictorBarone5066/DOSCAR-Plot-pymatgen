@@ -2,19 +2,22 @@ from pymatgen.io.vasp import Vasprun
 from pymatgen.electronic_structure.plotter import LDosPlotter
 from matplotlib import pyplot as plt
 
+plt.rcParams["font.family"] = "Times New Roman"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
+plt.tight_layout = True
 
-PATH = "C://Users//baron//Desktop//"
+PATH = "C://Users//baron//Desktop//tests//"
 #Examples of use:
 
-# <codecell> Make a minimally customized plot
-v = Vasprun(PATH + "vasprun.xml.AgBiI4")
-dos = LDosPlotter(v)
-dos.AutoCreateGraph(x_lims = [-5, 5], save_path = PATH + "1_.pdf", legend_style=1)
-#You can do this in a sinlge line with the following:
-#LDosPlotter(Vasprun(PATH+"vasprun.xml.AgBiI4")).AutoCreateGraph(x_lims=[-5, 5], save_path="1.5_.pdf")
-
-
-
+## <codecell> Make a minimally customized plot
+#v = Vasprun(PATH + "vasprun.xml.AgBiI4")
+#dos = LDosPlotter(v)
+#dos.AutoCreateGraph(x_lims = [-5, 5], save_path = PATH + "1_.pdf", legend_style=1)
+##You can do this in a sinlge line with the following:
+##LDosPlotter(Vasprun(PATH+"vasprun.xml.AgBiI4")).AutoCreateGraph(x_lims=[-5, 5], save_path="1.5_.pdf")
+#
+#
+#
 ## <codecell> DOS smoothing, easy-ish manual legend placements, custom y-label
 #v = Vasprun(PATH + "vasprun.xml.AgBiI4")
 #dos = LDosPlotter(v)
@@ -113,6 +116,81 @@ dos.AutoCreateGraph(x_lims = [-5, 5], save_path = PATH + "1_.pdf", legend_style=
 #plt.axvline(x=v.efermi, color='orange', linewidth = 0.85, ymin = 0.1, ymax = 0.9, alpha=.5)                    
 #plt.savefig(PATH + "5_.pdf")
 #plt.clf()
+#
+#
+#
+# <codecell> Make a grid of DOS plots
+from matplotlib import gridspec
+import os
+from glob import glob as glob
+from math import ceil
+
+#Get number of rows and columns while adding all of the xml files
+nCols = 3
+xmlList = []
+for path, dirs, files in os.walk(PATH):
+    xmlList_ = glob(str(path) + "*.xml*")
+    for x in xmlList_:
+        xmlList.append(x)
+nRows = ceil(len(xmlList) / nCols)
+#At this point you may want to add logic to order the xml files.  Here, i'm sorting them by the last
+#2 characters in the filename.  If you're deleting files form the list, remember to re-initialize
+#the nRows variable (or just set it after the deletions)
+xmlList.sort(key = lambda s: s[-3:])   
+
+#Add plots in order
+fig = plt.figure(figsize=(8.5, 11), dpi=300) #not setting figsize makes the picture look dumb
+gs = gridspec.GridSpec(nRows, nCols, fig, hspace=0.1)
+#Add main lables to figure
+fig.text(0.05, 0.5, "Electronic DOS (states/eV)", rotation="vertical", ha="center", va="center", 
+         fontsize=13)
+fig.text(0.5, 0.05, r"$E-E_\mathrm{F}$ (eV)", ha="center", va="center", fontsize=13)   
+
+for row in range(0, nRows):
+    for col in range(0, nCols):
+        if(row*nCols) + col >= len(xmlList): #avoids error if you don't have enough plots to 
+            pass                             #completly fill out the last row
+        else:          
+            #Create the vasprun object
+            ax = fig.add_subplot(gs[row, col])
+            v = Vasprun(xmlList[(row*nCols) + col])
+            dos = LDosPlotter(v, return_figure = True)
+
+            #Do case-specific editing
+            ##Make all plots share the same x-axis scaling, only show the bottom x-axis ticks
+            ax.set_xlim(-5, 5)
+            if(row != nRows - 1):
+                ax.tick_params('x', labelbottom=False)
+            ##Make all plots share the same y-axis scaling, only show the left y-axis ticks    
+            ax.set_ylim(0, 15)
+            if(col != 0):
+                ax.tick_params('y', labelleft=False)
+
+            ##Add labels for rows and cols
+            if(row == nRows - 1):
+                if(col == 0):
+                    ax.set_xlabel("Col 0")
+                if(col == 1):
+                    ax.set_xlabel("Col 1")
+                if(col == 2):
+                    ax.set_xlabel("Col 2")
+            if(col == 0):
+                if(row == 0):
+                    ax.set_ylabel("Row 0")
+                if(row == 1):
+                    ax.set_ylabel("Row 1")
+                if(row == 2):
+                    ax.set_ylabel("Row 2")                                      
+
+            #Add elements to plot (be sure to do this last, since the code returns a 'figure' object
+            #and not an 'axis' object.  The two have different functions which can be used by them
+            ax = dos.AddAllElements()
+                    
+plt.savefig(PATH + "test.pdf")
+plt.clf()
+
+
+
 
 
 
